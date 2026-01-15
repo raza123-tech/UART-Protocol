@@ -1,233 +1,140 @@
-UART Transmitter & Receiver (Verilog HDL)
+UART Protocol Implementation on FPGA (Verilog)
 📌 Overview
 
-This project implements a UART (Universal Asynchronous Receiver Transmitter) using Verilog HDL, including:
+This project implements a complete UART (Universal Asynchronous Receiver–Transmitter) communication system in Verilog, suitable for FPGA deployment as well as simulation-based verification.
+
+The design includes:
 
 UART Transmitter
 
-UART Receiver with oversampling
+UART Receiver with ×4 oversampling
 
-Multiple testbenches for standalone and loopback verification
+Self-checking testbenches for transmitter and receiver
 
-The design is fully synthesizable and verified using waveform-based simulation.
+End-to-end UART verification using different clocks
 
-⚙️ Features
+Ready for FPGA testing with Tera Term
 
-Configurable clock frequency and baud rate
+✨ Key Features
 
-UART frame format:
+Fully parameterized design (clock & baud rate configurable)
 
-1 start bit
+UART frame format: 1 Start bit + 8 Data bits + 1 Stop bit
 
-8 data bits (LSB first)
+Receiver with ×4 oversampling for better noise tolerance
 
-1 stop bit
+Independent transmitter and receiver clocks
 
-Receiver uses oversampling for reliable data capture
+Memory-based data loading
 
-Busy and done flags for handshaking
+Suitable for FPGA and RTL simulation
 
-File-based and loopback-based testbenches
+⚙️ Specifications
+Parameter	Value (Default)
+Clock Frequency	100 MHz
+Baud Rate	9600 bps
+Receiver Oversampling	×4
+Data Width	8 bits (1 byte)
+FPGA Board	Xilinx Spartan-7 (Edge)
+Terminal Software	Tera Term
+🧩 Project Structure
+UART_PROTOCOL/
+│
+├── transmitter.sv        # UART transmitter module
+├── receiver.sv           # UART receiver with oversampling
+├── mem.txt               # Memory file (1 byte: 1000_0001)
+│
+├── Testbench/
+│   ├── receiver.sv       # Receiver testbench
+│   └── transmitter.sv    # Transmitter testbench
+│
+├── top.sv                # Self-checking testbench (TX + RX, different clocks)
+└── README.md             # Project documentation
 
-Suitable for FPGA and ASIC learning projects
+🧠 Module Descriptions
+🔹 UART Transmitter (transmitter.sv)
 
-🧩 Module Description
-1️⃣ UART Transmitter
+Converts 8-bit parallel data into a serial UART stream.
 
-File: transmitter.v
+Frame Format
 
-Functionality:
+Start Bit (0) → 8 Data Bits (LSB first) → Stop Bit (1)
 
-Accepts 8-bit parallel data
 
-Serializes data into UART format
+Parameters
 
-Generates start bit, data bits, and stop bit
+CLK_FREQ – System clock frequency (default: 100 MHz)
 
-Uses baud-rate counter for timing control
+BAUD_RATE – UART baud rate (default: 9600)
 
-Key Signals:
+Outputs
 
-Signal	Description
-clk	System clock
-reset	Synchronous reset
-data[7:0]	Parallel input data
-transmit	Start transmission
-txd	Serial output
-busy	Indicates transmission in progress
-2️⃣ UART Receiver
+txd – Serial transmit line
 
-File: receiver.v
+busy – High during transmission
 
-Functionality:
+🔹 UART Receiver (receiver.sv)
 
-Detects start bit
+Receives serial UART data using ×4 oversampling and reconstructs the original byte.
 
-Uses oversampling (default 4×) for noise immunity
+Parameters
 
-Samples data at mid-bit position
+CLK_FREQ – System clock frequency (default: 100 MHz)
 
-Outputs received byte and done flag
+BAUD_RATE – UART baud rate (default: 9600)
 
-Key Signals:
+DIV_SAMPLE – Oversampling factor (default: 4)
 
-Signal	Description
-clk	System clock
-rst	Reset
-rxd	Serial input
-rxddata[7:0]	Received data
-rdone	Data valid flag
-3️⃣ Testbenches
-🔹 Transmitter Testbench
+Outputs
 
-Sends multiple bytes
+rxddata – Received 8-bit data
 
-Observes txd waveform and busy signal
+rdone – Pulses high when a byte is successfully received
 
-Verifies correct framing and timing
+🔁 Data Flow
+Transmitter
+Parallel Data → Shift Register → UART Frame → txd
 
-🔹 Receiver Testbench (File-Based)
+Receiver
+rxd → Oversampling → Bit Recovery → Byte Assembly → rxddata
 
-Reads binary data from a file
 
-Sends serial stream manually
+(Diagrams can be added here as images if desired)
 
-Verifies correct data reconstruction
+📐 Parameter Overview
+Parameter	Module	Description	Default
+CLK_FREQ	TX, RX	System clock frequency (Hz)	100_000_000
+BAUD_RATE	TX, RX	UART baud rate	9600
+DIV_SAMPLE	RX	Oversampling factor	4
+WIDTH	Memory	Data width (bits)	8
+🧪 Simulation & Verification
 
-🔹 UART Loopback Testbench
+Individual testbenches for transmitter and receiver
 
-Transmitter output connected to receiver input
+top.sv performs end-to-end UART verification
 
-Uses different clock domains (100 MHz TX, 25 MHz RX)
+Self-checking logic ensures correct data reception
 
-Automatically checks received data
+Supports different clock domains for TX and RX
 
-Includes timeout protection
+🔌 FPGA & Hardware Testing
 
-🔄 Data Flow Summary
-Parallel Data → Transmitter → Serial Line → Receiver → Parallel Data
+Synthesizable on Xilinx Spartan-7
 
-📊 Simulation & Waveforms
+UART output can be monitored using Tera Term
 
-Waveforms generated using GTKWave
+Ideal for hardware protocol verification
 
-Key signals observed:
+🚀 Applications
 
-txd
+FPGA-based UART debugging
 
-busy
+Embedded systems training
 
-rxd
+Digital communication learning
 
-rxddata
+RTL design and verification practice
 
-rdone
-
-🛠 Tools Used
-
-Verilog HDL
-
-Icarus Verilog
-
-GTKWave
-
-EDA Playground / Local Linux Simulation
-
-🎯 Learning Outcomes
-
-Understanding UART protocol timing
-
-Baud rate generation
-
-FSM-based serial communication
-
-Oversampling technique in receivers
-
-Writing robust Verilog testbenches
-
-📌 Future Improvements
-
-Parity bit support
-
-Configurable data length
-
-FIFO buffering
-
-AXI/UART bridge
-
-Interrupt-based receiver
-
-👤 Author
-
-Raza Abbas
-Digital Design | VLSI | Embedded Systems
-
-📄 License
-
-This project is open-source and free to use for learning purposes.
-
-✅ Data Flow Diagram (UART)
-🔷 High-Level Data Flow Diagram
-        +------------------+
-        |   Parallel Data  |
-        |   (8-bit)        |
-        +--------+---------+
-                 |
-                 v
-        +------------------+
-        | UART TRANSMITTER |
-        | - Start Bit      |
-        | - Data Bits      |
-        | - Stop Bit       |
-        | - Baud Counter   |
-        +--------+---------+
-                 |
-                 v
-        +------------------+
-        |  SERIAL LINE     |
-        |      (txd)       |
-        +--------+---------+
-                 |
-                 v
-        +------------------+
-        | UART RECEIVER    |
-        | - Start Detect   |
-        | - Oversampling   |
-        | - Shift Register |
-        +--------+---------+
-                 |
-                 v
-        +------------------+
-        | Parallel Output  |
-        | (rxddata[7:0])  |
-        +------------------+
-
-🔷 Transmitter Internal Flow
-data[7:0]
-   |
-   v
-Shift Register (Start + Data + Stop)
-   |
-   v
-Baud Counter
-   |
-   v
-txd (Serial Output)
-
-🔷 Receiver Internal Flow
-rxd
- |
- v
-Start Bit Detection
- |
- v
-Oversampling Counter
- |
- v
-Mid-bit Sampling
- |
- v
-Shift Register
- |
+Interview and academic projects
  v
 rxddata + rdone
