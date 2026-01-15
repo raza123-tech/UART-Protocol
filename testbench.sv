@@ -1,96 +1,267 @@
 
-module tb_uart_shared;
+`timescale 1ns / 1ps
+
+module tb;
+    parameter CLK_FREQ  = 100_000_000;
+    parameter BAUD_RATE = 9600;
+    localparam CLK_PERIOD = 10;
+    
     reg clk;
     reg reset;
-    reg [7:0] data_in;
-    reg btn;
-
+    reg [7:0] data;
+    reg transmit;
     wire txd;
-    wire [7:0] mem_out_data;
-    wire [3:0] mem_wr_addr;
-    wire tx_done_dbg;
-    wire rx_ready_dbg;
-    wire [7:0] rx_byte_dbg;
+    wire busy;
 
-    integer i;
-    integer tcnt;
-    integer max_wait;
-    reg [7:0] test_bytes [0:3];
-
-    topmodule #(.CLK_FREQ(1000000), .BAUD_RATE(9600), .DB_THRES(20)) DUT (
-        .data_in(data_in),
+    transmitter #(
+        .clk_freq(CLK_FREQ),
+        .baud_rate(BAUD_RATE)
+    ) uut (
         .clk(clk),
-        .btn(btn),
         .reset(reset),
+        .data(data),
+        .transmit(transmit),
         .txd(txd),
-        .mem_out_data(mem_out_data),
-        .mem_wr_addr(mem_wr_addr),
-        .tx_done_dbg(tx_done_dbg),
-        .rx_ready_dbg(rx_ready_dbg),
-        .rx_byte_dbg(rx_byte_dbg)
+        .busy(busy)
     );
 
+    initial clk = 0;
+    always #(CLK_PERIOD/2) clk = ~clk;
+
     initial begin
-        clk = 0;
-        forever #500 clk = ~clk;
+        $display("Starting UART Transmitter Testbench...");
+        $monitor("Time=%0t | txd=%b | busy=%b", $time, txd, busy);
     end
 
     initial begin
-        $dumpfile("uart_iv.vcd");
-        $dumpvars(0, tb_uart_shared);
+        $dumpfile("dump.vcd");
+        $dumpvars(0, tb);
     end
 
     initial begin
-        reset = 1'b1;
-        btn = 1'b0;
-        data_in = 8'h00;
+        reset = 0;
+        transmit = 0;
+        data = 8'h00;
 
-        test_bytes[0] = 8'h55;
-        test_bytes[1] = 8'hA5;
-        test_bytes[2] = 8'h00;
-        test_bytes[3] = 8'hFF;
+        apply_reset();
+        send_byte(8'h22);
+        
+        send_byte(8'hA5);
 
-        #2000;
-        reset = 1'b0;
-
-        for (i = 0; i < 4; i = i + 1) begin
-            data_in = test_bytes[i];
-
-            btn = 1'b1;
-            repeat (200) @(posedge clk);
-            btn = 1'b0;
-
-            tcnt = 0;
-            max_wait = 50000;
-            while (tx_done_dbg == 1'b0) begin
-                @(posedge clk);
-                tcnt = tcnt + 1;
-                if (tcnt >= max_wait) begin
-                    $display("ERROR: TIMEOUT waiting for tx_done for byte %0d (%02h) at sim time %0t", i, data_in, $time);
-                    $finish;
-                end
-            end
-            $display("TB: TX done for byte %0d: %02h at time %0t", i, data_in, $time);
-
-            tcnt = 0;
-            while (rx_ready_dbg == 1'b0) begin
-                @(posedge clk);
-                tcnt = tcnt + 1;
-                if (tcnt >= max_wait) begin
-                    $display("ERROR: TIMEOUT waiting for rx_ready for byte %0d (%02h) at sim time %0t", i, data_in, $time);
-                    $finish;
-                end
-            end
-            @(posedge clk);
-
-            if (rx_byte_dbg === data_in) $display("PASS: Sent %02h, Received %02h (time %0t)", data_in, rx_byte_dbg, $time);
-            else $display("FAIL: Sent %02h, Received %02h (time %0t)", data_in, rx_byte_dbg, $time);
-
-            repeat (300) @(posedge clk);
-        end
-
-        $display("All tests finished at time %0t", $time);
+        #1000;
+        $display("Testbench complete.");
         $finish;
     end
+
+    task apply_reset;
+        begin
+            @(negedge clk);
+            reset = 1;
+            repeat(5) @(posedge clk);
+            reset = 0;
+            repeat(2) @(posedge clk);
+            $display("--- Reset Applied ---");
+        end
+    endtask
+
+    task send_byte(input [7:0] d_in);
+       $display("--- Sending Data: 0x%h ---", d_in);  
+      begin
+            wait(!busy); 
+            @(posedge clk);
+            data = d_in;
+            transmit = 1;
+            @(posedge clk);
+            transmit = 0;
+           
+            
+            wait(busy);
+            wait(!busy);
+        end
+    endtask
+
+
+
+
+
+`timescale 1ns/1ps
+module tb;
+  reg clk;
+  reg rst;
+  reg rxd;
+  wire [7:0] rxddata;
+  wire rdone;
+  
+  receiver uut(
+    .clk(clk),
+    .rst(rst),
+    .rxd(rxd),
+    .rxddata(rxddata), 
+    .rdone(rdone)
+  );
+
+  reg [7:0]char_in; 
+  integer i;
+  integer file;
+  
+  initial clk = 0;
+  always #5 clk = ~clk;
+  
+  initial begin
+    rxd = 1; 
+    reset(); 
+  
+    
+    file = $fopen("mem.txt", "rb"); 
+    if (file == 0) begin
+        $display("Error: Could not open file");
+        $finish;
+    end
+    
+  
+    while (!$feof(file)) begin
+      $fscanf(file, "%b", char_in); 
+    end 
+        #10;
+      
+        rxd = 0;               
+        #104160;
+        
+        for (i = 0; i < 8; i = i + 1) begin
+          rxd = char_in[i];    
+          #104160;
+        end
+        
+        rxd = 1;               
+        #104160             
+      
+    $fclose(file);
+    $display("Finished sending binary file:%0h.",rxddata);
+    $finish;
+  end
+
+  task reset;
+    begin
+      rst = 1;
+      repeat(2) @(posedge clk);
+      rst = 0;
+    end
+  endtask
+
+endmodule
+
+
+
+
+    
+
+endmodule
+        $finish;
+    end
+endmodule
+
+
+
+
+
+
+
+
+module uart_testbench();
+    reg clk_100mhz = 0; 
+    reg clk_25mhz = 0;  
+    reg rst=0;
+    reg tx_start = 0;
+    reg [7:0] tx_data = 8'hA5; 
+    
+    wire line;
+    wire [7:0] rx_data;
+    wire rx_done;
+    wire tx_busy;
+
+    
+    always #5  clk_100mhz = ~clk_100mhz;
+    always #20 clk_25mhz  = ~clk_25mhz; 
+  reg [7:0]a;  
+  
+  
+  
+  transmitter transmitter_inst (
+        .clk(clk_100mhz), 
+        .reset(rst),          
+        .data(tx_data),       
+        .transmit(tx_start),  
+        .txd(line),    
+        .busy(tx_busy)  
+    );
+
+  
+    receiver #(
+        .clk_freq(25_000_000), 
+      .baud_rate(9600)      
+    ) receiver_inst (
+        .clk_fpga(clk_25mhz), 
+        .rst(rst),            
+        .rxd(line),    
+        .rxddata(rx_data),    
+        .rdone(rx_done)      
+    );
+  
+  initial begin 
+    $dumpfile("testbench.vcd");
+    $dumpvars(0,uart_testbench);
+  end
+  
+    initial 
+      begin
+        $display("Starting");
+        reset();
+        send($random);
+        check();
+        #1000 
+        $finish;
+ end
+  
+  task reset; 
+    begin 
+   rst=1;
+        #200 
+      rst = 0;
+    
+  end 
+  endtask
+  task send( input [7:0]in);
+    begin 
+      wait(!tx_busy);
+        @(posedge clk_100mhz);
+        tx_start = 1;
+        tx_data = in;
+        a=in;
+        @(posedge clk_100mhz);
+        tx_start = 0;
+  
+  end
+  endtask
+  
+  task check;
+    begin
+   fork
+            begin
+                wait(rx_done);
+            end
+            begin
+                #2000000; 
+                $display("Status: Timeout reached!");
+            end
+        join_any
+
+    if (rx_data == a) begin
+            $display("TEST PASSED");
+        end else begin
+          $display("TEST FAILED:  received %h , correct %h", rx_data,a);
+        end
+    end
+  endtask
+  
 endmodule
 
