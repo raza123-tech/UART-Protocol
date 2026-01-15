@@ -1,63 +1,58 @@
 module transmitter #(
-    parameter integer CLK_FREQ  = 1000000
-    parameter integer BAUD_RATE = 9600
+    parameter clk_freq = 50000000,
+    parameter baud_rate = 9600
 )(
-    input  wire        clk,
-    input  wire        reset,
-    input  wire [7:0]  data_in,
-    input  wire        transmit,
-    output reg         txd,
-    output reg         tx_done
+    input clk,
+    input reset,
+    input [7:0] data,
+    input transmit,
+    output reg txd,
+    
 );
+    localparam div_val = clk_freq / baud_rate;
 
-    localparam integer BAUD_COUNT = CLK_FREQ / BAUD_RATE;
-    reg state;
-    reg [15:0] baudcnt;
-    reg [3:0] bits_sent;
+    reg [3:0] bit_cnt;
+    reg [15:0] baud_cnt;
     reg [9:0] shift_reg;
-
-    initial begin
-        state = 0;
-        baudcnt = 0;
-        bits_sent = 0;
-        shift_reg = 10'h3FF;
-        txd = 1'b1;
-        tx_done = 1'b0;
-    end
+    reg state;
 
     always @(posedge clk) begin
         if (reset) begin
             state <= 0;
-            baudcnt <= 0;
-            bits_sent <= 0;
-            shift_reg <= 10'h3FF;
-            txd <= 1'b1;
-            tx_done <= 1'b0;
+            baud_cnt <= 0;
+            bit_cnt <= 0;
+            txd <= 1;
+            busy <= 0;
+            shift_reg <= 10'h3ff;
         end else begin
-            tx_done <= 1'b0;
-            if (state == 1'b0) begin
-                if (transmit) begin
-                    baudcnt <= 0;
-                    bits_sent <= 0;
-                    shift_reg <= {1'b1, data_in, 1'b0};
-                    state <= 1'b1;
-                end
-            end else begin
-                if (baudcnt < BAUD_COUNT - 1)
-                    baudcnt <= baudcnt + 1;
-                else begin
-                    baudcnt <= 0;
-                    txd <= shift_reg[0];
-                    shift_reg <= {1'b1, shift_reg[9:1]};
-                    bits_sent <= bits_sent + 1;
-                    if (bits_sent + 1 >= 10) begin
-                        tx_done <= 1'b1;
-                        state <= 1'b0;
-                        txd <= 1'b1;
+            case (state)
+                0: begin 
+                    txd <= 1;
+                    busy <= 0;
+                    if (transmit) begin
+                        shift_reg <= {1'b1, data, 1'b0}; 
+                        state <= 1;
+                        busy <= 1;
+                        baud_cnt <= 0;
+                        bit_cnt <= 0;
                     end
                 end
-            end
+                1: begin 
+                      txd <= shift_reg[0];
+                    if (baud_cnt >= div_val - 1) begin
+                      baud_cnt <= 0;
+                        if (bit_cnt == 9) begin
+                            state <= 0;
+                        end else begin
+                            shift_reg <= {1'b1, shift_reg[9:1]};
+                            bit_cnt <= bit_cnt + 1;
+                        end
+                    end else begin
+                        baud_cnt <= baud_cnt + 1;
+                    end
+                end
+            endcase
         end
     end
 endmodule
-
+       
