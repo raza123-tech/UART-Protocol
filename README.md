@@ -41,7 +41,7 @@ Terminal Software	Tera Term
 UART_PROTOCOL/
 │
 ├── transmitter.sv        # UART transmitter module
-├── receiver.sv           # UART receiver with oversamplin
+├── receiver.sv           # UART receiver with oversamplinG
 ├── mem.txt               # Memory file (1 byte: 1000_0001)
 │
 ├── Testbench/
