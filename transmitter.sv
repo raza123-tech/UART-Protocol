@@ -1,5 +1,5 @@
 module transmitter #(
-    parameter integer CLK_FREQ  = 1000000,
+    parameter integer CLK_FREQ  = 1000000
     parameter integer BAUD_RATE = 9600
 )(
     input  wire        clk,
