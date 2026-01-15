@@ -1,73 +1,76 @@
 module receiver #(
-    parameter integer CLK_FREQ   = 1000000,
-    parameter integer BAUD_RATE  = 9600,
-    parameter integer DIV_SAMPLE = 4
+    parameter clk_freq    = 50000000,
+    parameter baud_rate   = 9600,
+    parameter div_sample  = 4
 )(
     input  wire       clk,
     input  wire       rst,
     input  wire       rxd,
-    output wire [7:0] rxddata,
-    output reg        data_ready
+    output reg [7:0]  rxddata, 
+    
+   
 );
-    localparam integer DIV_COUNTER = CLK_FREQ / (BAUD_RATE * DIV_SAMPLE);
-    localparam integer MID_SAMPLE  = DIV_SAMPLE / 2;
-    localparam integer DIV_BIT     = 10;
+    localparam div_counter = clk_freq / (baud_rate * div_sample);
+    localparam mid_sample  = div_sample / 2;
 
-    reg [13:0] baudcnt;
-    reg [1:0] samplecnt;
-    reg [3:0] bitcnt;
-    reg [9:0] rxshift;
-    reg state;
-
-    assign rxddata = rxshift[8:1];
-
-    initial begin
-        baudcnt = 0;
-        samplecnt = 0;
-        bitcnt = 0;
-        rxshift = 10'h3FF;
-        data_ready = 1'b0;
-        state = 1'b0;
-    end
+    reg        state; 
+    reg [3:0]  bit_count;
+    reg [2:0]  sample_count;
+    reg [15:0] baud_tick_cnt;
+    reg [7:0]  rx_shift_reg; 
 
     always @(posedge clk) begin
         if (rst) begin
-            state <= 1'b0;
-            baudcnt <= 0;
-            samplecnt <= 0;
-            bitcnt <= 0;
-            rxshift <= 10'h3FF;
-            data_ready <= 1'b0;
+            state <= 0;
+            baud_tick_cnt <= 0;
+            sample_count <= 0;
+            bit_count <= 0;
+            rdone <= 0;
+            rxddata <= 0;
+            rx_shift_reg <= 0;
         end else begin
-            data_ready <= 1'b0;
-            if (baudcnt < DIV_COUNTER - 1) begin
-                baudcnt <= baudcnt + 1;
-            end else begin
-                baudcnt <= 0;
-                if (state == 1'b0) begin
-                    samplecnt <= 0;
-                    bitcnt <= 0;
-                    if (~rxd) begin
-                        state <= 1'b1;
-                    end
-                end else begin
-                    if (samplecnt == MID_SAMPLE - 1) begin
-                        rxshift <= {rxd, rxshift[9:1]};
-                    end
-
-                    if (samplecnt < DIV_SAMPLE - 1) begin
-                        samplecnt <= samplecnt + 1;
-                    end else begin
-                        samplecnt <= 0;
-                        bitcnt <= bitcnt + 1;
-                        if (bitcnt + 1 >= DIV_BIT) begin
-                            data_ready <= 1'b1;
-                            state <= 1'b0;
+            rdone <= 0; 
+            baud_tick_cnt <= baud_tick_cnt + 1;
+            
+            if (baud_tick_cnt >= div_counter - 1) begin
+                baud_tick_cnt <= 0;
+                
+                case (state)
+                    0: begin
+                        
+                      if (!rxd) begin
+                            state <= 1;
+                            sample_count <= 0;
+                            bit_count <= 0;
+                             
                         end
                     end
-                end
+
+                    1: begin 
+                     
+                        if (sample_count == div_sample - 1) begin
+                            sample_count <= 0;
+                            if (bit_count == 9) begin 
+                                state <= 0;
+                            end else begin
+                                bit_count <= bit_count + 1;
+                            end
+                        end else begin
+                            sample_count <= sample_count + 1;
+                        end
+
+                        if (sample_count == mid_sample) begin
+                            if (bit_count >= 1 && bit_count <= 8) begin
+                                rx_shift_reg <= {rxd, rx_shift_reg[7:1]};
+                            end
+                            if (bit_count == 8) begin
+                                rxddata <= {rxd, rx_shift_reg[7:1]}; 
+                                rdone <= 1;
+                            end
+                        end
+                    end
+                endcase
             end
         end
     end
 endmodule
-
