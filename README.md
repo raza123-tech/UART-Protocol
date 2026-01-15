@@ -98,8 +98,11 @@ Parallel Data → Shift Register → UART Frame → txd
 Receiver
 rxd → Oversampling → Bit Recovery → Byte Assembly → rxddata
 
+Diagram
+<img width="640" height="437" alt="image" src="https://github.com/user-attachments/assets/feec3b37-ee2a-4039-9ffb-2bd73a30e3a2" />
+<img width="640" height="437" alt="image" src="https://github.com/user-attachments/assets/b48e4085-02ba-4d83-ac02-21611c7cb182" />
 
-(Diagrams can be added here as images if desired)
+
 
  Parameter Overview
 Parameter	Module	Description	Default
