@@ -1,267 +1,375 @@
-
-`timescale 1ns / 1ps
-
-module tb;
-    parameter CLK_FREQ  = 100_000_000;
-    parameter BAUD_RATE = 9600;
-    localparam CLK_PERIOD = 10;
-    
-    reg clk;
-    reg reset;
-    reg [7:0] data;
-    reg transmit;
-    wire txd;
-    wire busy;
-
-    transmitter #(
-        .clk_freq(CLK_FREQ),
-        .baud_rate(BAUD_RATE)
-    ) uut (
-        .clk(clk),
-        .reset(reset),
-        .data(data),
-        .transmit(transmit),
-        .txd(txd),
-        .busy(busy)
-    );
-
-    initial clk = 0;
-    always #(CLK_PERIOD/2) clk = ~clk;
-
-    initial begin
-        $display("Starting UART Transmitter Testbench...");
-        $monitor("Time=%0t | txd=%b | busy=%b", $time, txd, busy);
-    end
-
-    initial begin
-        $dumpfile("dump.vcd");
-        $dumpvars(0, tb);
-    end
-
-    initial begin
-        reset = 0;
-        transmit = 0;
-        data = 8'h00;
-
-        apply_reset();
-        send_byte(8'h22);
-        
-        send_byte(8'hA5);
-
-        #1000;
-        $display("Testbench complete.");
-        $finish;
-    end
-
-    task apply_reset;
-        begin
-            @(negedge clk);
-            reset = 1;
-            repeat(5) @(posedge clk);
-            reset = 0;
-            repeat(2) @(posedge clk);
-            $display("--- Reset Applied ---");
-        end
-    endtask
-
-    task send_byte(input [7:0] d_in);
-       $display("--- Sending Data: 0x%h ---", d_in);  
-      begin
-            wait(!busy); 
-            @(posedge clk);
-            data = d_in;
-            transmit = 1;
-            @(posedge clk);
-            transmit = 0;
-           
-            
-            wait(busy);
-            wait(!busy);
-        end
-    endtask
-
-
-
-
-
 `timescale 1ns/1ps
-module tb;
-  reg clk;
-  reg rst;
-  reg rxd;
-  wire [7:0] rxddata;
-  wire rdone;
-  
-  receiver uut(
-    .clk(clk),
-    .rst(rst),
-    .rxd(rxd),
-    .rxddata(rxddata), 
-    .rdone(rdone)
+
+
+`include "transaction.sv"
+`include "interface.sv"
+`include "generator.sv"
+`include "driver.sv"
+`include "monitor.sv"
+`include "scoreboard.sv"
+`include "coverage.sv"
+`include "environment.sv"
+
+module tb_top;
+
+
+  bit clk;
+  bit rst;
+
+
+  always #5 clk = ~clk;
+
+ 
+  uart_intf intf(clk, rst);
+
+  uart_top dut (
+    .clk      (intf.clk),
+    .rst      (intf.rst),
+    .tx_data  (intf.tx_data),
+    .transmit (intf.transmit),
+    .txd      (intf.txd),
+    .busy     (intf.busy),
+    .rx_data  (intf.rx_data),
+    .rdone    (intf.rdone),
+    .rxd      (intf.rxd)
   );
 
-  reg [7:0]char_in; 
-  integer i;
-  integer file;
-  
-  initial clk = 0;
-  always #5 clk = ~clk;
-  
+ 
+  assign intf.rxd = intf.txd;
+
+ 
+  environment env;
+
+ 
   initial begin
-    rxd = 1; 
-    reset(); 
-  
+   
+    clk = 0;
+    rst = 1;
     
-    file = $fopen("mem.txt", "rb"); 
-    if (file == 0) begin
-        $display("Error: Could not open file");
-        $finish;
-    end
+   
+    #20;
+    rst = 0;
     
-  
-    while (!$feof(file)) begin
-      $fscanf(file, "%b", char_in); 
-    end 
-        #10;
-      
-        rxd = 0;               
-        #104160;
-        
-        for (i = 0; i < 8; i = i + 1) begin
-          rxd = char_in[i];    
-          #104160;
-        end
-        
-        rxd = 1;               
-        #104160             
-      
-    $fclose(file);
-    $display("Finished sending binary file:%0h.",rxddata);
-    $finish;
+   
+    env = new(intf.tb);
+    
+    
+    env.gen.rcount = 500;
+    
+   
+    env.run();
   end
 
-  task reset;
-    begin
-      rst = 1;
-      repeat(2) @(posedge clk);
-      rst = 0;
+ 
+  initial begin
+    $dumpfile("dump.vcd");
+    $dumpvars(0, tb_top);
+  end
+
+endmodule
+
+
+// TRANSACTION
+
+class transaction;
+  rand bit [7:0] tx_data;
+  bit [7:0] rx_data;
+  bit busy;
+  bit rdone;
+​
+ 
+  constraint coverage {
+    tx_data dist {
+      8'h00      := 10,  
+      [1:254]    :/ 80,  
+      8'hFF      := 10   
+    };
+  }
+​
+  function void display(string name);
+    $display("[%s] time=%0t | tx_data: %0d | rx_data: %0d | busy: %b | rdone: %b", 
+              name, $time, tx_data, rx_data, busy, rdone);
+  endfunction
+  
+endclass 
+
+// INTERFACE
+
+interface uart_intf(input logic clk, input logic rst);
+  
+ 
+  logic [7:0] tx_data;  
+  logic       transmit; 
+  logic       txd;     
+  logic       busy;    
+  
+  logic [7:0] rx_data; 
+  logic       rdone;   
+  logic       rxd;     
+
+ 
+   
+  
+
+  modport tb (
+    input  clk, rst,
+    output tx_data, transmit, 
+    input  txd, busy,         
+    input  rx_data, rdone,    
+    output rxd                
+  );
+
+ 
+  
+  modport dut (
+    input  clk, rst,
+    input  tx_data, transmit, rxd,
+    output txd, busy, rx_data, rdone
+  );
+
+endinterface
+
+// GENERATOR
+
+class generator;
+  transaction trans;
+  mailbox #(transaction) gen2drv;
+  int rcount;
+  event ended; 
+
+  function new(mailbox#(transaction) gen2drv);
+    this.gen2drv = gen2drv;
+  endfunction
+
+  
+ task run();
+    repeat(rcount) begin
+      trans = new();
+      if(!trans.randomize()) $error("Randomization failed");
+      gen2drv.put(trans);
+      trans.display("Generator");
+     
+      #100; 
+    end
+    #500;
+    -> ended; 
+  endtask
+endclass
+
+// DRIVER
+class driver;
+  virtual uart_intf.tb vif;
+  mailbox#(transaction) gen2drv;
+  
+  function new(virtual uart_intf.tb vif, mailbox#(transaction) gen2drv);
+    this.vif = vif;
+    this.gen2drv = gen2drv;
+  endfunction
+  
+  task run(); 
+    forever begin
+      transaction trans;
+      
+      
+      gen2drv.get(trans);
+      
+    
+      wait(vif.busy == 0);
+      
+     
+      @(posedge vif.clk);
+      vif.tx_data  <= trans.tx_data; 
+      vif.transmit <= 1;
+      
+      
+      @(posedge vif.clk);
+      vif.transmit <= 0;
+      
+     
+      wait(vif.busy == 1); 
+      wait(vif.busy == 0); 
+      
+      trans.display("Driver");
     end
   endtask
+endclass
 
-endmodule
+// MONITOR
 
+class monitor;
+  virtual uart_intf.tb vif;
+  mailbox #(transaction) mon2scb; 
 
+  function new(virtual uart_intf.tb vif, mailbox#(transaction) mon2scb);
+    this.vif = vif;
+    this.mon2scb = mon2scb;
+  endfunction
 
-
-    
-
-endmodule
-        $finish;
+  task run(); 
+    forever begin
+      transaction trans = new();
+      
+     
+      wait(vif.rdone == 1);  
+      
+     
+      @(posedge vif.clk);
+      
+     
+      trans.tx_data = vif.tx_data; 
+      trans.rx_data = vif.rx_data; 
+      trans.rdone   = vif.rdone;   
+      
+     
+      mon2scb.put(trans);
+      trans.display("Monitor"); 
+      
+      
+      wait(vif.rdone == 0);
     end
-endmodule
+  endtask
+endclass
+
+// SCOREBOARD
+class scoreboard;
+  
+  mailbox#(transaction) mon2scb;
+  int count = 0;
+  int pass  = 0;
+  int fail  = 0;
+  
+  function new(mailbox #(transaction) mon2scb);
+    this.mon2scb = mon2scb;
+  endfunction
+  
+  task run(); 
+    transaction trans;
+    forever begin
+      
+      mon2scb.get(trans);
+      
+      
+      if(trans.tx_data == trans.rx_data) begin
+        $display("SCOREBOARD PASS | Time: %0t | Expected: %0d | Actual: %0d", 
+                  $time, trans.tx_data, trans.rx_data);
+        pass++;
+      end
+      else begin
+        $display("SCOREBOARD FAIL | Time: %0t | Expected: %0d | Actual: %0d", 
+                  $time, trans.tx_data, trans.rx_data);
+        fail++;
+      end
+      
+      count++;
+    end
+  endtask
+endclass
 
 
+// ENVIRONMENT
 
+class environment;
+ 
+  generator      gen;
+  driver         drv;
+  monitor        mon;
+  scoreboard     scb;
+  uart_coverage  cov; 
+  
+ 
+  virtual uart_intf.tb vif;
+  
+  
+  mailbox #(transaction) gen2drv;
+  mailbox #(transaction) mon2scb;
 
-
-
-
-
-module uart_testbench();
-    reg clk_100mhz = 0; 
-    reg clk_25mhz = 0;  
-    reg rst=0;
-    reg tx_start = 0;
-    reg [7:0] tx_data = 8'hA5; 
+  
+  function new(virtual uart_intf.tb vif);
+   
+    this.vif = vif;
     
-    wire line;
-    wire [7:0] rx_data;
-    wire rx_done;
-    wire tx_busy;
+   
+    gen2drv = new();
+    mon2scb = new();
+      
+ 
+    gen = new(gen2drv);
+    drv = new(vif, gen2drv);
+    mon = new(vif, mon2scb);
+    scb = new(mon2scb);
+    cov = new();      
+  endfunction
 
+ 
+  task run();
+    fork
+      gen.run();
+      drv.run();
+      mon.run();
+      scb.run();
+      
+      forever begin
+        transaction item;
+        mon2scb.peek(item);   
+        cov.sample(item);     
+        @(posedge vif.rdone);
+      end
+      
     
-    always #5  clk_100mhz = ~clk_100mhz;
-    always #20 clk_25mhz  = ~clk_25mhz; 
-  reg [7:0]a;  
-  
-  
-  
-  transmitter transmitter_inst (
-        .clk(clk_100mhz), 
-        .reset(rst),          
-        .data(tx_data),       
-        .transmit(tx_start),  
-        .txd(line),    
-        .busy(tx_busy)  
-    );
-
-  
-    receiver #(
-        .clk_freq(25_000_000), 
-      .baud_rate(9600)      
-    ) receiver_inst (
-        .clk_fpga(clk_25mhz), 
-        .rst(rst),            
-        .rxd(line),    
-        .rxddata(rx_data),    
-        .rdone(rx_done)      
-    );
-  
-  initial begin 
-    $dumpfile("testbench.vcd");
-    $dumpvars(0,uart_testbench);
-  end
-  
-    initial 
       begin
-        $display("Starting");
-        reset();
-        send($random);
-        check();
-        #1000 
-        $finish;
- end
-  
-  task reset; 
-    begin 
-   rst=1;
-        #200 
-      rst = 0;
-    
-  end 
-  endtask
-  task send( input [7:0]in);
-    begin 
-      wait(!tx_busy);
-        @(posedge clk_100mhz);
-        tx_start = 1;
-        tx_data = in;
-        a=in;
-        @(posedge clk_100mhz);
-        tx_start = 0;
-  
-  end
-  endtask
-  
-  task check;
-    begin
-   fork
-            begin
-                wait(rx_done);
-            end
-            begin
-                #2000000; 
-                $display("Status: Timeout reached!");
-            end
-        join_any
+        #1000000; 
+        $display( "timeout check your logic");
+      end
+    join_any 
 
-    if (rx_data == a) begin
-            $display("TEST PASSED");
-        end else begin
-          $display("TEST FAILED:  received %h , correct %h", rx_data,a);
-        end
-    end
-  endtask
+    wait(scb.count == gen.rcount); 
+    #1000; 
+    
   
-endmodule
+    $display("  verificaytion done");
+    $display("  total packet send : %0d", scb.count);
+    $display("  Pass: %0d | Fail: %0d", scb.pass, scb.fail);
+    $display("  Final Coverage: %0.2f%%", cov.data_cg.get_inst_coverage());
+   
+    $finish; 
+  endtask
+endclass
+
+//COVERAGE
+
+class uart_coverage;
+  transaction trans;
+
+  covergroup data_cg;
+    
+    coverpoint trans.rx_data {
+      bins low    = {[0:85]};
+      bins mid    = {[86:170]};
+      bins high   = {[171:255]};
+      
+     
+      bins zero      = {8'h00};
+      bins max       = {8'hFF};
+      bins toggle_55 = {8'h55};
+      bins toggle_AA = {8'hAA};
+    }
+
+   
+    cp_rdone: coverpoint trans.rdone {
+      bins hit_done = {1};
+    }
+  endgroup
+
+  function new();
+    data_cg = new();
+  endfunction
+
+ 
+  function void sample(transaction t);
+    this.trans = t;
+    data_cg.sample();
+  endfunction
+endclass
+
+
 
